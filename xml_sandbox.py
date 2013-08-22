@@ -1,80 +1,87 @@
 import xml.etree.ElementTree as etree
+import re
 
-isbn = '9783150000014'
-ean = isbn[:3]
 
-publisher_int = int(isbn[3:10])
+def analize_isbn(isbn):
+    isbn = join(isbn)
+    #print ('\nStarting to analize ISBN: ' + isbn + ' ...')
+    tree_root = etree.parse('RangeMessage.xml').getroot()
+    [ean, lang_entry] = check_ean(isbn, tree_root)
+    #print (ean)
+    [language] = analize_language(isbn, lang_entry)
+    #print (language)
+    [publisher, agency] = analize_publisher(isbn, tree_root, ean, language)
+    #print (publisher)
+    [number] = analize_number(isbn, ean, language, publisher)
+    #print (number)
+    [crc] = analize_crc(isbn)
+    return (ean + '-' +  language + '-' + publisher + '-' + number + '-' + crc)
 
-#print (ean)
-#print(publisher_int)
+def join(isbn_string):
+    '''selects the the digits of the string as groups then joins these groups back together as ONE string'''
+    grouped = re.findall('[0-9]+', isbn_string) #finds all the characters that are digits
+                                                #in groups like in the input string
+    joined = ''.join(grouped)                   #joins the groups back as one string
+    return (joined)                             #returns the joined isbn string with
+                                                #no non-numeral characters between the digits
 
-tree = etree.parse('RangeMessage.xml')
-root = tree.getroot()
-#for child in root:
-#    print (child)
+def check_ean(isbn, tree_root):
+    '''checks if the EAN identifier is bookish'''
+    ucc = tree_root.find('EAN.UCCPrefixes').findall('EAN.UCC')
+    for lang_entry in ucc:
+        if lang_entry.find('Prefix').text == isbn[:3]:
+    #        print ('EAN-Prefix ' + ean + ' is valid')
+            return ([lang_entry.find('Prefix').text, lang_entry])
+    raise ValueError(isbn[:3] + ' is not a EAN code for a book')
+                    
 
-#print(len(root))
-
-pref = root.find('EAN.UCCPrefixes')
-#print(len(pref))
-#for c1 in pref:
-#    print(c1)
+def analize_language(isbn, lang_entry):
+    '''analizes the laguage in witch the book is published'''
+    for rule in lang_entry.find('Rules'):
+        lang_range = rule.find('Range').text.split('-')
+        if int(lang_range[0]) <= int(isbn[3:10]) <= int(lang_range[1]):
+            lang_length =rule.find('Length').text
+            language = isbn[3:3+int(lang_length)]
+            return([language])
+    raise Error('can not find language')
     
-ucc = pref.findall('EAN.UCC')
-#print(ucc)
-for code in ucc:
-#    for c in code:
-#        print (c)
-#    print(code.find('Prefix').text)
-    if code.find('Prefix').text == ean:
-        print ('ean ' + ean + ' is valid')  
-        for rule in code.find('Rules'):
-#            print(rule)
-            rule_text = rule.find('Range').text
-#            print(rule_text)
-            lang_range = rule_text.split('-')
-            if int(lang_range[0]) <= publisher_int <= int(lang_range[1]):
-#                print(range[0])
-#                print (lang_range[0] + ' ' + str(publisher_int) + ' ' + lang_range[1])
-                lang_length =rule.find('Length').text
-#                print (length)
-                lang_string = isbn[3:3+int(lang_length)]
-                print (' language is: ' + lang_string)
+def analize_publisher(isbn, tree_root, ean, lang):
+    '''analizes the publisher of the book'''
+    reg_groups = tree_root.find('RegistrationGroups')            
+    for lang_code in reg_groups:
+        if lang_code.find('Prefix').text == ean + '-' + lang:
+            agency = lang_code.find('Agency').text
+            for rule in lang_code.find('Rules'):
+                pub_range = rule.find('Range').text.split('-')
+                if int(pub_range[0]) <= int(isbn[len(ean)+len(lang):len(ean)+len(lang)+7]) <= int(pub_range[1]): #muss eventuell mit nullen aufgefüllt werden
+                    pub_length =rule.find('Length').text
+                    publisher = isbn[len(ean)+len(lang):len(ean)+len(lang)+int(pub_length)]
+                    return ([publisher, agency])
+    raise Error('can not find publisher')
+    
+def analize_number(isbn, ean, language, publisher):
+    '''analizes the publisher-intern number of the book'''
+    number = isbn[len(ean)+len(language)+len(publisher):-1]
+    return ([number])
+    
+def analize_crc(isbn):
+    '''checks if the check sum is right'''
+    crc = isbn[-1]
+    #isbn = join(isbn)
+    mask = (1,3,1,3,1,3,1,3,1,3,1,3)
+    check_sum = 0
+    i = 0
+    for mask_i in mask:
+        check_sum = check_sum + (mask_i * int(isbn[i]))
+        i = i+1
+    CRC_calc = (10-check_sum%10)%10
+    CRC_given = int(isbn[-1])
+    if CRC_calc == CRC_given:
+        return ([crc])
+    raise crcError('check sum does not match')
 
-combined = ean + '-' + lang_string
-#print (combined)
-reg_groups = root.find('RegistrationGroups')            
-for c in reg_groups:
-    if c.find('Prefix').text == combined:
-        print('published in ' + c.find('Agency').text)
-        
-        
-        
-        for rule in c.find('Rules'):
-#            print(rule)
-            rule_text = rule.find('Range').text
-#            print(rule_text)
-            pub_range = rule_text.split('-')
-#            print (pub_range)
-            if int(pub_range[0]) <= int(isbn[3+int(lang_length):3+int(lang_length)+7]) <= int(pub_range[1]):
-#                print(pub_range[0])
-#                print (pub_range[0] + ' ' + str(publisher_int) + ' ' + pub_range[1])
-                pub_length =rule.find('Length').text
-#                print (pub_length)
-                pub_string = isbn[3+int(lang_length):3+int(lang_length)+int(pub_length)]
-                print ('publisher is: ' + pub_string)
 
-print ('   number is: ' + isbn[3+int(lang_length)+int(pub_length):-1])
 
-print ('      CRC is: ' + isbn[-1])
-
-# <RegistrationGroups>
-#    <Group>
-#      <Prefix>978-0</Prefix>
-#      <Agency>English language</Agency>
-#      <Rules>
-#        <Rule>
-#          <Range>0000000-1999999</Range>
-#          <Length>2</Length>
-#        </Rule>
-#        <Rule>
+isbns_for_test = ['978-1430224150', '978-3150000014', '9783150000014', '978-3-15-000001-4', '978 3 15 000001 4', '978-3 150000014', '978-3-15  000001-4', '9783899056761']
+for number in isbns_for_test: 
+    print('Analizing...  {:<20} --> {}'.format(number, analize_isbn(number)))
