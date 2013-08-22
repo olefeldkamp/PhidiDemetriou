@@ -34,7 +34,7 @@ def split(isbn_string):
     #if language_code == '1': check_eng2(joined_isbn)
     #if language_code == '3': check_ger(joined_isbn)
     
-    with open('/home/ole/Scipts/Java/Eclipse/PhidiDemetriou/publisher_system', encoding='utf-8') as pub_file:
+    with open('publisher_system', encoding='utf-8') as pub_file:
         for line in pub_file:
             start_range,  stop_range = line.split(None, 2)
             lang, start_pub, num, c = start_range.split('-')
